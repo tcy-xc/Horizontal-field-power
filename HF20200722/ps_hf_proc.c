@@ -5,13 +5,13 @@
 #include <string.h>
 #include "ps_hf_proc.h"
 #include "ps_hf_lib.h"
-#include"ps_hf_out.h"
+#include "ps_hf_out.h"
 
 static void *s_ProcThread(void *pvObj);					
 inline static int s_ProcFunc(ps_proc_t *pstObj);		
 static void PsProcDataProcessing(ps_proc_t *pstObj);	
 static void PsCheckFault(ps_proc_t *pstObj);				
-static double PsProcDisplacementPID(ps_proc_t *pstObj);	
+//static double PsProcDisplacementPID(ps_proc_t *pstObj);	
 static void PsProcAngleOut(ps_proc_t *pstObj);	
 static double PsProcFFT24(double sample[],double k);	
 
@@ -20,7 +20,7 @@ int PsProcInit(ps_proc_t *pstObj)
 	struct sched_param stParam;
 	pthread_attr_t stAttr;
 	
-	//绑定IO定时器
+	//绑定IO定时器/
 	pstObj->p_pstTimer = &pstObj->pstIO->stConf.r_stAnTimer;
 		
 	//将stLog绑定到自身
@@ -34,7 +34,9 @@ int PsProcInit(ps_proc_t *pstObj)
 	pstObj->cal.angle_pref[0] = 135;
 	pstObj->cal.angle_pref[1] = 135;
 	pstObj->cal.InitFlag = 0;// add by zgz 20160512
-
+    
+    pstObj->cal.I_DRMP_DC2_last=0; //huangzhuo xjy 20180423 rmp
+    
 	//设置主处理线程属性:detached,FIFO,prio
 	pthread_attr_init(&stAttr);
 	pthread_attr_setdetachstate(&stAttr, PTHREAD_CREATE_DETACHED);
@@ -185,7 +187,6 @@ static void *s_ProcThread(void *pvObj)
 }
 
 
-
 inline static int s_ProcFunc(ps_proc_t *pstObj)
 {
 	//当运行时间<900ms
@@ -194,25 +195,30 @@ inline static int s_ProcFunc(ps_proc_t *pstObj)
 		PsProcDataProcessing(pstObj);
 
 		PsCheckFault(pstObj);
+		
+		pstObj->cal.Ihf_set = pstObj->adWaveValue[pstObj->lRunCount];
+				
+		PIDoutAngle(pstObj);
+		pstObj->cal.angle[0] = pstObj->ang[0];//电流PID,计算出角度
+		pstObj->cal.angle[1] = pstObj->ang[1];	
 	
+
+/*
 		switch(pstObj->cal.IpFlag)
 		{
-			/**IP_INVALID值为零，由前述memset段进行初始化,表示IP没击穿 **/
+			//IP_INVALID值为零，由前述memset段进行初始化,表示IP没击穿 
 			case IP_INVALID:
 			if(pstObj->lRunCount<pstObj->parameter.feedback_time)
 				pstObj->cal.Ihf_set = pstObj->adWaveValue[pstObj->lRunCount];//预设输出
 			else
-				pstObj->cal.Ihf_set=0;
-			PIDoutAngle(pstObj);
-
-			pstObj->cal.angle[0] = 135;
-			pstObj->cal.angle[1] = 135;   //   20200718
-
-			pstObj->cal.angle[0]=pstObj->ang[0];//电流PID,计算出角度
-			pstObj->cal.angle[1] = pstObj->ang[1];
+				pstObj->cal.Ihf_set = pstObj->adWaveValue[pstObj->lRunCount];
+				
+		PIDoutAngle(pstObj);
+		pstObj->cal.angle[0] = pstObj->ang[0];//电流PID,计算出角度
+		pstObj->cal.angle[1] = pstObj->ang[1];		
 			break;
 			
-			/**IP击穿 **/
+			//IP击穿 
 			case IP_EFFICIENT:
 			//if(pstObj->lRunCount < (pstObj->parameter.feedback_time - (int)(30*pstObj->dTimeFactor+0.5)))
 			if(pstObj->lRunCount < (pstObj->parameter.feedback_time))
@@ -228,16 +234,11 @@ inline static int s_ProcFunc(ps_proc_t *pstObj)
 //			else if(pstObj->lRunCount >= pstObj->parameter.feedback_time)
 //				pstObj->cal.Ihf_set=PsProcDisplacementPID(pstObj);//位移反馈输出
 							
-			PIDoutAngle(pstObj);
-
-			pstObj->cal.angle[0] = 135;
-			pstObj->cal.angle[1] = 135;    //20200718
-
-			pstObj->cal.angle[0] = pstObj->ang[0];//电流PID,计算出角度
-			pstObj->cal.angle[1] = pstObj->ang[1];
+			pstObj->cal.angle[0]=PsProcCurrentPID(pstObj);//电流PID,计算出角度
+			pstObj->cal.angle[1] = 135;
 			break;
 			
-			/**IP破裂 **/
+			//IP破裂 
 			case IP_DISRUPTION:
 			if( pstObj->lRunCount<=(pstObj->cal.time_buf+(int)(30*pstObj->dTimeFactor+0.5)))
 			{
@@ -245,13 +246,8 @@ inline static int s_ProcFunc(ps_proc_t *pstObj)
 				//pstObj->cal.Ihf_set=pstObj->cal.Ihf_buf*(1- ( pstObj->lRunCount-pstObj->cal.time_buf )/(int)(30*pstObj->dTimeFactor+0.5));
 				pstObj->cal.Ihf_set=pstObj->cal.Ihf_buf*(1- ( pstObj->lRunCount-pstObj->cal.time_buf )/36.0);
 				
-				PIDoutAngle(pstObj);
-
-				pstObj->cal.angle[0] = 135;
-				pstObj->cal.angle[1] = 135;      //20200718
-
-				pstObj->cal.angle[0] = pstObj->ang[0];//电流PID,计算出角度
-				pstObj->cal.angle[1] = pstObj->ang[1];
+				pstObj->cal.angle[0]=PsProcCurrentPID(pstObj);//电流PID,计算出角度
+				pstObj->cal.angle[1] = 135;
 			}
 			else//从破裂时刻点起,30ms后
 			{
@@ -260,7 +256,7 @@ inline static int s_ProcFunc(ps_proc_t *pstObj)
 			}
 			break;
 			
-			/**IP正常消失 **/
+			//IP正常消失
 			case IP_EXTINGUISH:
 			if( pstObj->lRunCount<=(pstObj->cal.time_buf+(int)(30*pstObj->dTimeFactor+0.5)))
 			{
@@ -268,10 +264,8 @@ inline static int s_ProcFunc(ps_proc_t *pstObj)
 				//pstObj->cal.Ihf_set=pstObj->cal.Ihf_buf*(1- ( pstObj->lRunCount-pstObj->cal.time_buf )/(int)(30*pstObj->dTimeFactor+0.5));
 				pstObj->cal.Ihf_set=pstObj->cal.Ihf_buf*(1- ( pstObj->lRunCount-pstObj->cal.time_buf )/36.0);
 				
-				PIDoutAngle(pstObj);
-
-				pstObj->cal.angle[0] = pstObj->ang[0];//电流PID,计算出角度
-				pstObj->cal.angle[1] = pstObj->ang[1];
+				pstObj->cal.angle[0]=PsProcCurrentPID(pstObj);//电流PID,计算出角度
+				pstObj->cal.angle[1] = 135;
 			}
 			else//从破裂时刻点起,30ms后
 			{
@@ -287,15 +281,18 @@ inline static int s_ProcFunc(ps_proc_t *pstObj)
 			break;
 
 			case IP_FAULT:
-			//出现了故障，控制输出由PsSetStat处理，这里应直接返回
+			//出现了故障，控制输出PsSetStat处理，这里应直接返回
 			return SYS_ER;
 		}
+*/
 	}
 	//放电完毕,时间>=pstObj->iPlasmaTimeScale=900ms
 	else
 	{
 		pstObj->cal.angle[0] = 135;
 		pstObj->cal.angle[1] = 135;
+		pstObj->pstIO->w_stDgOutValue.xB0 = PCI1750_OUT_HI;
+	    pstObj->pstIO->w_stDgOutValue.xB1 = PCI1750_OUT_HI;
 	}
 	
 	//角度输出
@@ -334,7 +331,7 @@ static void PsProcDataProcessing(ps_proc_t *pstObj)
 	pstObj->cal.dft[0][n-48]=pstObj->cal.dft[0][n];
 	for(i=0;i<24;i++)
 		DFT[i]=pstObj->cal.dft[0][n-23+i];	 
-	 a[0] = PsProcFFT24(&DFT[0],1);
+	a[0] = PsProcFFT24(&DFT[0],1);
 
 	//第1位为交流电压
 	pstObj->cal.dft[1][n]=pstObj->pstIO->r_adAnInValue[1];
@@ -360,45 +357,64 @@ static void PsProcDataProcessing(ps_proc_t *pstObj)
 	//20130522 wcn
 	pstObj->cal.I_DRMP_DC2= a[7];	
 	//Ip
-	pstObj->cal.Ip[1]=a[4 ]*(1000.0)/(0.004);//change to Ipouter. modified by zpchen at 2015.05.29.
+//	pstObj->cal.Ip[1]=-a[4 ]*(1000.0)/(0.004);//modified by zpchen at 20190403.
+	pstObj->cal.Ip[1]=-a[4 ]*(1000.0)*0.885/(0.004);//feedback by ipout,*0.885,xjy,xuxin,czp20191231
+//	pstObj->cal.Ip[1]=a[4 ]*(1000.0)/(0.004);//change to Ipouter. modified by zpchen at 2015.05.29.
 //	pstObj->cal.Ip[1]=-a[4 ]*(1000.0)/(0.004);;//for plasma current reverse,zpchen20150703
 //	pstObj->cal.Ip[1]=-a[4 ]*(1000.0)/(0.004);//change to Ipouter. modified by zpchen at 2014.05.26.
-	//the signs before the signal of the displacement magnetic coil are opposite between the control system and DAQ system.2013.10.22 zpchen
-	//Then pstObj->cal.rogowski= -a[5] and pstObj->cal.saddle=-a[6 initally].
+//the signs before the signal of the displacement magnetic coil are opposite between the control system and DAQ system.2013.10.22 zpchen
+//Then pstObj->cal.rogowski= -a[5] and pstObj->cal.saddle=-a[6 initally].
 //	pstObj->cal.rogowski= -a[5];//delete '*1.01*0.93', modified by zpchen20160105
 //	pstObj->cal.rogowski= 0*1.01*0.93;//fixed to 0 because diagnostic problem by zpchen20151228
-	pstObj->cal.rogowski= -a[5]*1.01*0.93;//modified for the change to Pcbyrog coil by zpchen20150529
-//	pstObj->cal.rogowski= a[5]*1.01*0.93;;//for plasma current reverse by zpchen201506
-    pstObj->cal.saddle=-a[6]*1;//2013.10.22  change from 364
+//	pstObj->cal.rogowski= -a[5]*1.01*0.93;//modified for the change to Pcbyrog coil by zpchen20150529 //comment @ 20170622 by zhulizhi
+	pstObj->cal.rogowski= 0;//modified by zpchen@20191212;(a[5]+0.005)*1.01*0.93;//modified by zpchen@20190402
+//	pstObj->cal.rogowski= a[5]*1.01*0.93;//for plasma current reverse by zpchen201506
+//  pstObj->cal.saddle=-a[6]*1;//2013.10.22  change from 364
+    pstObj->cal.saddle = (a[6]-0.02)*1;//modified by zpchen@20190402, offset = 0.024 from the log file
 //	pstObj->cal.saddle= a[6]*1;//for plasma current reverse by zpchen20150703
-	//pstObj->cal.Ip[1]=a[4 ]*(1000.0)/(0.004);//for plasma current reverse, modified by zpchen at 2012.12.25
-
-	
+//  pstObj->cal.Ip[1]=a[4 ]*(1000.0)/(0.004);//for plasma current reverse, modified by zpchen at 2012.12.25
+//  printf("AI6=%.3f  ",  pstObj->cal.saddle);
 	/********use rmp by ld******
 	 * 
 	 */
-	//pstObj->cal.saddle=-a[6]*-1-pstObj->cal.I_DRMP_DC2/21;//补偿内部扰动场线圈对PCB鞍形的影响20131122
-//	pstObj->cal.saddle=-a[6]*1+pstObj->cal.I_DRMP_DC2/15;//modified by zpchen201506.
-//	pstObj->cal.saddle=-a[6]*1+pstObj->cal.I_DRMP_DC2/24;//modified by zhulizhi 20160505
-//	pstObj->cal.saddle=-a[6]*1-pstObj->cal.I_DRMP_DC2*0.055;//modified by huangzhuo 20170331
-//	pstObj->cal.saddle=-a[6]*1+pstObj->cal.I_DRMP_DC2*0.055;//modified by  20170504
-	pstObj->cal.saddle=-a[6]*1+pstObj->cal.I_DRMP_DC2*0.055;//modified by huangzhuo 20170608
+//  pstObj->cal.saddle=pstObj->cal.saddle-pstObj->cal.I_DRMP_DC2/21;//补偿内部扰动场线圈对PCB鞍形的影响20131122
+//	pstObj->cal.saddle=pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2/15;//modified by zpchen201506.
+//	pstObj->cal.saddle=pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2/24;//modified by zhulizhi 20160505
+//	pstObj->cal.saddle=pstObj->cal.saddle-pstObj->cal.I_DRMP_DC2*0.055;//modified by huangzhuo 20170331
+//	pstObj->cal.saddle=pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2*0.055;//modified by  20180703 old 2 1 RMP
+//	pstObj->cal.saddle=pstObj->cal.saddle-pstObj->cal.I_DRMP_DC2*0.055;//modified by  20190520  zs old 21RMP w ysad without yrog 15n812p
+//	pstObj->cal.saddle=pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2*0.055;//modified by  20190624  22RMP LD
+//	pstObj->cal.saddle=pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2*0.055;//modified by  20180621 hz
+//  pstObj->cal.saddle=pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2*0.047;//modified by zs 20180717 lzf1 5 7 8 10 12 14 RMP2 1
+
+//*******eddy compensation // modified by huangzhuo 2018423
+     
+//	pstObj->cal.saddle= pstObj->cal.saddle+pstObj->cal.I_DRMP_DC2*0.049-(pstObj->cal.I_DRMP_DC2-pstObj->cal.I_DRMP_DC2_last)*0.13;
+//	pstObj->cal.I_DRMP_DC2_last= pstObj->cal.I_DRMP_DC2;
+
 	/**************************/
 	
+// //*******DV// modified by zpchen20180709
+//   pstObj->cal.rogowski= pstObj->cal.rogowski-0.4*pstObj->cal.I_DRMP_DC2;//dv 20190429
+//   pstObj->cal.saddle = pstObj->cal.saddle - 0.00241 * (pstObj->cal.I_DRMP_DC2 - 0.039);//dv 20190429
+//   pstObj->cal.rogowski= pstObj->cal.rogowski-0.008*pstObj->cal.I_DRMP_DC2;//dv 20191128
+//   pstObj->cal.saddle = pstObj->cal.saddle - 0.0032 * (pstObj->cal.I_DRMP_DC2 - 0.039);//dv 20191128 
+  /**************************/
 	
 	
-//	//DRMP 当t>230ms && t<470ms,
-//	if((pstObj->lRunCount>=490) && (pstObj->lRunCount<810))
+	
+//	//H-fre DRMP 当t>245ms && t<420ms,@20180713
+//	if((pstObj->lRunCount>=500) && (pstObj->lRunCount<984))
 //	{
-//		if(pstObj->lRunCount==490)
+//		if(pstObj->lRunCount==534)
 //		{
 //			pstObj->cal.feedback_buf = pstObj->cal.saddle;
 //		}
-//		else if((pstObj->lRunCount>490) && (pstObj->lRunCount<810))
+//		else if((pstObj->lRunCount>534) && (pstObj->lRunCount<744))
 //		{
 //			pstObj->cal.saddle = pstObj->cal.feedback_buf;//+0.15/1200*(pstObj->lRunCount-444);
 //		}
-//		else if(pstObj->lRunCount==810)
+//		else if(pstObj->lRunCount==744)
 //		{
 //			pstObj->cal.feedback_buf = pstObj->cal.saddle-(pstObj->cal.feedback_buf);//+0.15/1200*(684-444));
 //			pstObj->cal.saddle = pstObj->cal.feedback_buf;
@@ -408,8 +424,8 @@ static void PsProcDataProcessing(ps_proc_t *pstObj)
 //			pstObj->cal.rogowski = pstObj->cal.rogowski-(pstObj->cal.feedback_buf);//+0.15/1200*(684-444));
 //		}
 //	}
-	
-	
+//	
+//	
 	//位移
 	if(pstObj->cal.Ip[1]>0)
 	{
@@ -506,8 +522,40 @@ static void PsCheckFault(ps_proc_t *pstObj)
 				
 }
 
+/*
+ static double PsProcCurrentPID(ps_proc_t *pstObj)
+{
+	double kp,ki,kd; 
+	double  temp= 0; 
+	double  angle=0;
+	
+	kp =pstObj->parameter.Ihf_kp;
+	ki = pstObj->parameter.Ihf_ki;
+	kd =pstObj->parameter.Ihf_kd;
 
+	pstObj->cal.Ihf_err_p=pstObj->cal.Ihf_set-pstObj->cal.Ihf_real;
+	pstObj->cal.Ihf_err_i+=(pstObj->cal.Ihf_set-pstObj->cal.Ihf_real)*0.001/pstObj->dTimeFactor;
+	pstObj->cal.Ihf_err_d=0;
+		
+	temp=kp*pstObj->cal.Ihf_err_p+ki*pstObj->cal.Ihf_err_i;
+		
+	if(fabsf(pstObj->cal.Uhf_ac[0])>0)
+		temp=temp/(2*1.35*pstObj->cal.Uhf_ac[0]);
+	else
+		temp=0;	
+	
+	if(temp>0.96)
+		temp=0.96;
+	if(temp<-0.707)
+		temp=-0.707;
+	
+	angle=(180/3.1415926)*acosf(temp);
+	
+	return (angle);
 
+}
+*/
+/*
 static double PsProcDisplacementPID(ps_proc_t *pstObj)
 {
 	double Ip_pref,Ip_now,DY_pref,DY_now;
@@ -526,7 +574,7 @@ static double PsProcDisplacementPID(ps_proc_t *pstObj)
 
 
 		
-//	//当t>450ms&& t<600ms,按当前电流输出
+//	//H-fre DRMP 当t>450ms&& t<600ms,按当前电流输出@20180711
 //	if((t>=540))
 //	{
 ////		if(t==600)
@@ -676,6 +724,7 @@ static double PsProcDisplacementPID(ps_proc_t *pstObj)
 	pstObj->cal.DY[0]=pstObj->cal.DY[1];
 	return(temp);
 }
+*/
 
 static void PsProcAngleOut(ps_proc_t *pstObj)
 {
@@ -684,13 +733,13 @@ static void PsProcAngleOut(ps_proc_t *pstObj)
 	//限制最大最小角度
 	if( pstObj->cal.angle[0] > 150.0 )  
 		pstObj->cal.angle[0] = 150.0; 
-	if( pstObj->cal.angle[0] < 15.0 )   
-		pstObj->cal.angle[0] = 15.0; 
+	if( pstObj->cal.angle[0] < 45.0 )   
+		pstObj->cal.angle[0] = 45.0; 
 		
 	if( pstObj->cal.angle[1] > 150.0 )  
 		pstObj->cal.angle[1] = 150.0; 
-	if( pstObj->cal.angle[1] < 15.0 )   
-		pstObj->cal.angle[1] = 15.0; 
+	if( pstObj->cal.angle[1] < 45.0 )   
+		pstObj->cal.angle[1] = 45.0; //test 2020     15-45
 		
 	//限制角度变化量
 	if((pstObj->cal.angle[0]-pstObj->cal.angle_pref[0]) > 55.0 ) 
@@ -705,7 +754,7 @@ static void PsProcAngleOut(ps_proc_t *pstObj)
 		
 	//记录本周期角度	
 	pstObj->cal.angle_pref[0]=pstObj->cal.angle[0];
-	pstObj->cal.angle_pref[1]=pstObj->cal.angle[1];  //2020.07修改
+	pstObj->cal.angle_pref[1]=pstObj->cal.angle[1];
 
  	//angle   voltage  current     
  	// 12      5.0 V     20mA        

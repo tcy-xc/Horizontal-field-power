@@ -62,6 +62,8 @@ typedef struct CalulationData
 	int count;					//取平均值记数用
 	double feedback_buf;
 	double I_DRMP_DC2;			//20130522,wnc
+//  double I_dv;                //20191125,by xjy
+	double I_DRMP_DC2_last;     //20180423,huangzhuo xjy
 	int IpOLcount;
 
 	int InitFlag;				//反馈初始化标志,add by zgz 20160512
@@ -102,7 +104,7 @@ typedef struct PsProcessorTag
 							
 	cal_data cal;						//计算参数
 	param_data parameter;		//读取的参数
-	
+	long lShotNumber;          //shotnumber add by xjy 20190520
 	long lRunCount;				//指示处理函数运行的次数
 	double adWaveValue[DISCHARGE_TIME_SCALE];//预设值
 	

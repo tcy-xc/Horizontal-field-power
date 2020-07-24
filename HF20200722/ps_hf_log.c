@@ -9,6 +9,8 @@
 #include "ps_hf_log.h"
 #include "ps_hf_proc.h"
 #include "ps_hf_global.h"
+#include <stdlib.h>
+#include <string.h>
 
 //私有函数
 static int s_LogStdo(ps_log_t *pstObj);		//记录到stdout
@@ -153,6 +155,7 @@ static int s_LogStdo(ps_log_t *pstObj)
 	
 	for(i = 0; i < pstObj->lIndex; i += pstObj->iIdxIntv)
 	{
+		/***comment for test2020
 			printf("Ip=%.2f;\t",pstObj->astData[i].Ip); 
 			printf("DY=%.2f;\t",pstObj->astData[i].DY_real);
 			printf("Rogowski=%.2f;\t",pstObj->astData[i].rogowski);
@@ -161,6 +164,8 @@ static int s_LogStdo(ps_log_t *pstObj)
 			printf("Ihf_set=%.2f;\t",pstObj->astData[i].Ihf_set);
 			printf("Ihf_real=%.2f;\t",pstObj->astData[i].Ihf_real);		
 			printf("time=%ld;\n",pstObj->astData[i].time);
+			
+			***/
 	}
 	
 
@@ -177,8 +182,36 @@ static int s_LogFile(ps_log_t *pstObj)
 {
 	FILE *pfFile;
 	int i;
+	ps_proc_t *pstProc = pstObj->pvPsor;
+    
+    char filename[256];
+	char dirName[100];
+	int b;//dirname
+	char d[10];//save dirname
+    char num[20];//shotnum
 
-	pfFile = fopen(pstObj->szFilePath, "w");
+    //process shotnumb
+	 b = pstProc->lShotNumber / 1000;//dirname
+	 printf("shotnumber=%ld\n",pstProc->lShotNumber);
+	//create dir
+    strcpy(dirName, "/net/main/LOG/HF_log/");//save path
+    
+	itoa(b, d,10);
+	itoa(pstProc->lShotNumber,num,10);
+	strcat(dirName,d); //copy d to dirname
+    strcat(dirName,"000/");
+    mkdir(dirName, S_IRWXU);//create new file
+	printf("dirname=%s\n",dirName);//print for test add by xjy20190513
+    //new file
+	strcpy(filename, dirName);
+	strcat(filename, "/hflog");
+	strcat(filename,num);
+	strcat(filename, ".txt");
+	//open file
+	pfFile = fopen(filename, "w");
+
+
+//	pfFile = fopen(pstObj->szFilePath, "w");
 	if(pfFile == NULL)
 	{
 		fprintf(stderr, "ERROR: CAN'T OPEN FILE \"%s\"\n", pstObj->szFilePath);
@@ -187,33 +220,38 @@ static int s_LogFile(ps_log_t *pstObj)
 
 	for(i = 0; i < pstObj->lIndex; i++)
 	{
+			if(pstObj->astData[i].Ihf_real<=4&&pstObj->astData[i].Ihf_real>=0)
+			{
+				fprintf(pfFile,"check middle state\n");
+			}
+			fprintf(pfFile,"Time=%7.2f\t",pstObj->astData[i].time/g_stProc.dTimeFactor);
+			fprintf(pfFile,"  Ip=%9.3f\t",pstObj->astData[i].Ip); 
+			fprintf(pfFile,"       Rogowski=%7.3f\t",pstObj->astData[i].rogowski);
+			fprintf(pfFile,"    Saddle=%7.3f\t\n",pstObj->astData[i].saddle);
+
+			fprintf(pfFile,"              PCI1750 IN=%u\t  ",pstObj->astData[i].p_stIn.wValue); 
+			fprintf(pfFile," PCI1750 OUT=%u\t\n",pstObj->astData[i].p_stOut.wValue); 
+
+
+		    fprintf(pfFile,"              Ihf_set=%8.2f\t",pstObj->astData[i].Ihf_set);
+			fprintf(pfFile,"   Ihf_real=%8.2f\t",pstObj->astData[i].Ihf_real);
+			fprintf(pfFile,"   Ihf_err_p=%8.4f\t",pstObj->astData[i].Ihf_err_p);    //modify 2 to 4
+			fprintf(pfFile,"   Ihf_err_i=%8.4f\t",pstObj->astData[i].Ihf_err_i);
+			fprintf(pfFile,"   Ihf_err_d=%8.4f\t\n",pstObj->astData[i].Ihf_err_d);
+
+			fprintf(pfFile,"              DY_set=%8.4f\t",pstObj->astData[i].DY_set);
+			fprintf(pfFile,"    DY_real=%8.4f\t",pstObj->astData[i].DY_real);
+			fprintf(pfFile,"    DY_err_p=%8.4f\t",pstObj->astData[i].DY_err_p);
+			fprintf(pfFile,"    DY_err_i=%8.6f\t",pstObj->astData[i].DY_err_i);
+			fprintf(pfFile,"    DY_err_d=%8.4f\t\n",pstObj->astData[i].DY_err_d);   // modify 2 to 4
+
+			fprintf(pfFile,"              Uhf_ac[0]=%5.2f\t",pstObj->astData[i].Uhf_ac[0]);
+			fprintf(pfFile,"    Uhf_dc=%5.2f\t",pstObj->astData[i].Uhf_dc);
+			fprintf(pfFile,"        Angel[0]=%5.2f\t",pstObj->astData[i].angle[0]);
+			fprintf(pfFile,"        Angel[1]=%5.2f\t\n",pstObj->astData[i].angle[1]);//add 2020by xjy
 			
-			fprintf(pfFile,"Time=%7.2f",pstObj->astData[i].time/g_stProc.dTimeFactor);
-			fprintf(pfFile,"  Ip=%9.3f",pstObj->astData[i].Ip); 
-			fprintf(pfFile,"       Rogowski=%7.3f",pstObj->astData[i].rogowski);
-			fprintf(pfFile,"    Saddle=%7.3f\n",pstObj->astData[i].saddle);
-
-			fprintf(pfFile,"              PCI1750 IN=%u  ",pstObj->astData[i].p_stIn.wValue); 
-			fprintf(pfFile," PCI1750 OUT=%u\n",pstObj->astData[i].p_stOut.wValue); 
-
-
-		    fprintf(pfFile,"              Ihf_set=%8.2f",pstObj->astData[i].Ihf_set);
-			fprintf(pfFile,"   Ihf_real=%8.2f",pstObj->astData[i].Ihf_real);
-			fprintf(pfFile,"   Ihf_err_p=%8.4f",pstObj->astData[i].Ihf_err_p);    //modify 2 to 4
-			fprintf(pfFile,"   Ihf_err_i=%8.4f",pstObj->astData[i].Ihf_err_i);
-			fprintf(pfFile,"   Ihf_err_d=%8.4f\n",pstObj->astData[i].Ihf_err_d);
-
-			fprintf(pfFile,"              DY_set=%8.4f",pstObj->astData[i].DY_set);
-			fprintf(pfFile,"    DY_real=%8.4f",pstObj->astData[i].DY_real);
-			fprintf(pfFile,"    DY_err_p=%8.4f",pstObj->astData[i].DY_err_p);
-			fprintf(pfFile,"    DY_err_i=%8.6f",pstObj->astData[i].DY_err_i);
-			fprintf(pfFile,"    DY_err_d=%8.4f\n",pstObj->astData[i].DY_err_d);   // modify 2 to 4
-
-			fprintf(pfFile,"              Uhf_ac[0]=%5.2f",pstObj->astData[i].Uhf_ac[0]);
-			fprintf(pfFile,"    Uhf_dc=%5.2f",pstObj->astData[i].Uhf_dc);
-			fprintf(pfFile,"        Angel[0]=%5.2f\n",pstObj->astData[i].angle[0]);
 			
-			fprintf(pfFile,"              I_DRMP_DC2=%5.3f\n",pstObj->astData[i].I_DRMP_DC2);
+			fprintf(pfFile,"              I_DRMP_DC2=%5.3f\t\n",pstObj->astData[i].I_DRMP_DC2);
 //			fprintf(pfFile,"              Ihf_feedback_init=%5.3f\n",pstObj->astData[i].Ihf_feedback_init);
 	
 	}

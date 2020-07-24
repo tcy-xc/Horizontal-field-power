@@ -10,7 +10,7 @@
 #include "ps_hf_main.h"
 #include "ps_hf_init.h"
 #include "ps_hf_con.h"
-#include"ps_hf_out.h"
+
 
 int main(int argc, char *argv[])
 {
@@ -28,7 +28,6 @@ int PsMain()
 {
 	printf("\n\n***************SYSTEM INFO***************\n");
 	printf("***********This is HF20130413!***********\n");
-	Test();
 	printf("*****************************************");
 	printf("\n%s\nVersion: %s @ %s\n%s\n", INFO_NAME, INFO_VERSION, INFO_DATE, INFO_COPYRIGHT);
 	printf("*****************************************\n\n");

@@ -10,6 +10,7 @@
 #include "ps_hf_system.h"
 #include "pci1750.h"
 #include "ps_hf_io.h"
+#include <dirent.h>  //creat folder
 
 //定义常参量宏
 #define PS_LOG_NOLOG 0			//不记录

@@ -164,6 +164,8 @@ static int s_MntChkStat(ps_mnt_t *pstObj)
 	//清除最近的故障记录
 	pstObj->p_lFault = FT_NONE;
 
+
+
 	//检测内部故障,相应位为0表示故障
 	if(pstObj->p_stIn.xB0==PCI1750_IN_LO)//1750-0,母线温度过高
 	{
@@ -195,7 +197,7 @@ static int s_MntChkStat(ps_mnt_t *pstObj)
 	
 	//设置故障代码，同时保留以前的故障代码
 	PsSetFault((pstObj->p_lFault |PsGetFault()));
-
+/*
 	//外部故障，相应位为1表示故障
 	if(pstObj->p_stIn.xB3 == PCI1750_IN_HI)
 	{
@@ -204,7 +206,7 @@ static int s_MntChkStat(ps_mnt_t *pstObj)
 		PsSetStatus(STAT_IDLE);
 		fprintf(stderr, "FAULT: EXTERNAL FAULT.\n");	
 	}
-
+*/
 	//检测触发信号，相应位为1表示触发
 	if(pstObj->p_stIn.xB4 == PCI1750_IN_HI && PsGetStatus() == STAT_READY_HOT)
 	{

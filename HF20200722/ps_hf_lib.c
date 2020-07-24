@@ -217,7 +217,8 @@ int PsConfig1(char **pszList, int iCount)
 	//验证配置项目数量的正确性
 	c=iCount%2;
 
-	if(c!=0)
+//	if(c!=0)
+    if(c<=0)
 	{
 		return ERR_PARAM;
 	}
@@ -237,7 +238,10 @@ int PsConfig1(char **pszList, int iCount)
     
     if(PsProcConfig(&g_stProc,aiTime,adValue,c)!=ERR_NONE)
     	return ERR_PARAM;
-
+    	
+//    //将指令最后的炮号存入共享结构体,add by XJY
+    g_stProc.lShotNumber = atol(*(pszList++));
+	printf("ShotNo.\t%ld\n", g_stProc.lShotNumber);
 
 	//检查是否配置了PID参数
 	if(g_stProc.parameter.ParameterFlag != 1)
